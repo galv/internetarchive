@@ -33,6 +33,7 @@ import socket
 
 import six.moves.urllib as urllib
 import six
+import tensorflow as tf
 from requests.exceptions import HTTPError, RetryError, ConnectTimeout, \
     ConnectionError, ReadTimeout
 
@@ -53,6 +54,7 @@ class BaseFile(object):
                 if f.get('name') == name:
                     file_metadata = f
                     break
+        # assert file_metadata is not None
 
         self.identifier = item_metadata.get('metadata', {}).get('identifier')
         self.name = name
@@ -207,13 +209,13 @@ class File(BaseFile):
         file_path = self.name if not file_path else file_path
 
         if destdir:
-            if not os.path.exists(destdir) and return_responses is not True:
-                os.mkdir(destdir)
-            if os.path.isfile(destdir):
+            if not tf.io.gfile.exists(destdir) and return_responses is not True:
+                tf.io.gfile.mkdir(destdir)
+            if not tf.io.gfile.isdir(destdir):
                 raise IOError('{} is not a directory!'.format(destdir))
             file_path = os.path.join(destdir, file_path)
 
-        if not return_responses and os.path.exists(file_path.encode('utf-8')):
+        if not return_responses and tf.io.gfile.exists(file_path.encode("utf-8")): # os.path.exists(file_path.encode('utf-8')):
             if ignore_existing:
                 msg = 'skipping {0}, file already exists.'.format(file_path)
                 log.info(msg)
@@ -224,7 +226,7 @@ class File(BaseFile):
                     sys.stdout.flush()
                 return
             elif checksum:
-                with open(file_path, 'rb') as fp:
+                with tf.io.gfile.GFile(file_path, 'rb') as fp:
                     md5_sum = utils.get_md5(fp)
 
                 if md5_sum == self.md5:
@@ -238,8 +240,8 @@ class File(BaseFile):
                         sys.stdout.flush()
                     return
             else:
-                st = os.stat(file_path.encode('utf-8'))
-                if (st.st_mtime == self.mtime) and (st.st_size == self.size) \
+                st = tf.io.gfile.stat(file_path.encode('utf-8'))
+                if (st.mtime_nsec == self.mtime) and (st.length == self.size) \
                         or self.name.endswith('_files.xml') and st.st_size != 0:
                     msg = ('skipping {0}, file already exists '
                            'based on length and date.'.format(file_path))
@@ -253,9 +255,9 @@ class File(BaseFile):
 
         parent_dir = os.path.dirname(file_path)
         if parent_dir != '' \
-                and not os.path.exists(parent_dir) \
+                and not tf.io.gfile.exists(parent_dir) \
                 and return_responses is not True:
-            os.makedirs(parent_dir)
+            tf.io.gfile.makedirs(parent_dir)
 
         try:
             response = self.item.session.get(self.url,
@@ -270,7 +272,7 @@ class File(BaseFile):
             if not chunk_size:
                 chunk_size = 1000000
             if not fileobj:
-                fileobj = open(file_path.encode('utf-8'), 'wb')
+                fileobj = tf.io.gfile.GFile(file_path.encode('utf-8'), 'wb')
 
             with fileobj:
                 for chunk in response.iter_content(chunk_size=chunk_size):
@@ -281,8 +283,8 @@ class File(BaseFile):
             msg = ('error downloading file {0}, '
                    'exception raised: {1}'.format(file_path, exc))
             log.error(msg)
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            if tf.io.gfile.exists(file_path):
+                tf.io.gfile.remove(file_path)
             if verbose:
                 print(' ' + msg)
             elif silent is False:
